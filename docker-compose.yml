@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: jobscout-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jobscout
+      POSTGRES_USER: jobscout
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - jobscout-pg-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: jobscout-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  jobscout-pg-data:

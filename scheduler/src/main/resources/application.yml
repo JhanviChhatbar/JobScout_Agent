@@ -1,0 +1,20 @@
+# Spring Boot scheduler config for Job Scout
+# - App name, scheduling, custom agent script path, logging level and server port
+
+spring:
+  application:
+    name: job-scout-scheduler
+  scheduling:
+    enabled: true
+
+server:
+  port: 8080
+
+jobscout:
+  agent:
+    script-path: ../agent/main.py
+
+logging:
+  level:
+    com.jobscout: INFO
+

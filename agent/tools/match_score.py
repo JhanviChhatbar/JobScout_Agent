@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 from pathlib import Path
+import time
 
 _AGENT_DIR = Path(__file__).resolve().parents[1]
 if str(_AGENT_DIR) not in sys.path:
@@ -63,12 +64,13 @@ def score_job(job: dict, experience: str) -> dict:
 
 
 def score_all(jobs: list[dict], experience: str) -> list[dict]:
-    scored_jobs: list[dict] = []
-    for index, job in enumerate(jobs):
-        scored_job = score_job(job, experience)
-        logger.info("Scored job %d/%d: %s", index + 1, len(jobs), job.get("title", ""))
-        scored_jobs.append(scored_job)
-    return scored_jobs
+    scored = []
+    for i, job in enumerate(jobs):
+        logging.info(f"Scoring job {i+1}/{len(jobs)}: {job.get('title', '')}")
+        scored.append(score_job(job, experience))
+        if i < len(jobs) - 1:  # no sleep after last job
+            time.sleep(13)
+    return scored
 
 
 if __name__ == "__main__":

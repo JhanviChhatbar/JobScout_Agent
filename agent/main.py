@@ -22,11 +22,25 @@ def main() -> None:
         "https://revenuecat.com/careers",
         "https://anthropic.com/careers",
     ]
-    experience = (
-        "I am a Java backend engineer with experience building Spring Boot services, "
-        "REST APIs, and distributed systems. "
-        "I am actively upskilling in AI agent engineering, including LLM orchestration, "
-        "observability, and automation workflows."
+    experience = ("""
+        9 years Java backend engineering. Expert in Spring Boot, Kafka, 
+event-driven architecture, microservices, distributed systems, 
+REST API design, PostgreSQL, Redis, system design.
+
+Current projects:
+- Real-Time Match Momentum Engine: Java, Spring Boot, microkernel plugin 
+  pattern, event-driven pipeline, sport-agnostic adapter registry
+- Job Scout Agent: Python, LangChain, Gemini API, Playwright scraping, 
+  pgvector RAG, Langfuse observability, agent orchestration, tool use,
+  structured output
+
+Upskilling: LangChain4j, LLM tool use, agent orchestration, RAG with 
+pgvector, Langfuse tracing, LangGraph, agentic design patterns.
+
+Targeting: Staff Engineer or AI Agent Engineer roles at product companies.
+Strong backend fundamentals with hands-on AI agent engineering experience.
+Comfortable with ambiguity, self-directed, remote-first culture experience.
+""""
     )
 
     result = run(job_urls, experience)

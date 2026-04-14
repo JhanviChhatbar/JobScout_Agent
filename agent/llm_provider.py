@@ -3,6 +3,8 @@ from google.genai import types
 import anthropic
 import os
 from dotenv import load_dotenv
+import time
+import logging
 
 
 load_dotenv()
@@ -13,16 +15,28 @@ model = os.getenv("LLM_MODEL", "gemini-2.0-flash")
 print(f"LLM Provider: {provider} | Model: {model}")
 
 
-def _chat_gemini(system: str, user: str, max_tokens: int) -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key)
-    full_prompt = f"{system}\n\n{user}"
-    response = client.models.generate_content(
-        model=model,
-        contents=full_prompt,
-        config=types.GenerateContentConfig(max_output_tokens=max_tokens),
-    )
-    return getattr(response, "text", None) or getattr(response, "content", None) or ""
+max_retries = 5
+for attempt in range(max_retries):
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=max_tokens
+            )
+        )
+        return response.text
+    except Exception as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            wait = 60 * (attempt + 1)  # 60s, 120s, 180s...
+            logging.warning(
+                f"Rate limited. Waiting {wait}s "
+                f"before retry {attempt + 1}/{max_retries}"
+            )
+            time.sleep(wait)
+        else:
+            raise
+raise Exception("Max retries exceeded after rate limiting")
 
 
 def _chat_anthropic(system: str, user: str, max_tokens: int) -> str:

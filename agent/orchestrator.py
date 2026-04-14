@@ -84,9 +84,26 @@ async def run(job_urls: List[str], experience: str, candidate_name: str = "there
                     pass
             return {"status": "no_jobs_found", "pages_scraped": len(to_scrape), "jobs_found": 0, "trace_id": _get_trace_id(trace)}
 
-        # STEP 4 — Score all jobs
-        span_score = create_span(trace, "match-scoring", {"job_count": len(all_jobs)})
-        scored_jobs = score_all(all_jobs, experience)
+        # STEP 3.5 — Filter jobs before scoring
+        span_filter = create_span(trace, "filter-jobs", {"total": len(all_jobs)})
+        keywords = ["engineering", "backend", "agent", "software", 
+                    "developer", "platform", "infrastructure", "data"]
+        filtered_jobs = [
+            job for job in all_jobs
+            if any(kw in job.get("description", "").lower() for kw in keywords)
+        ]
+        if not filtered_jobs:
+            filtered_jobs = all_jobs[:10]
+        logging.info(f"Filtered to {len(filtered_jobs)} relevant jobs from {len(all_jobs)} total")
+        end_span(span_filter, {"filtered_jobs": len(filtered_jobs)})
+
+        # STEP 4 — Score filtered jobs
+        span_score = create_span(trace, "match-scoring", {"jobs": len(filtered_jobs)})
+        scored_jobs = score_all(filtered_jobs, experience)
+        high = len([j for j in scored_jobs if j.get("score") == "high"])
+        medium = len([j for j in scored_jobs if j.get("score") == "medium"])
+        low = len([j for j in scored_jobs if j.get("score") == "low"])
+        end_span(span_score, {"high": high, "medium": medium, "low": low})    
         high = sum(1 for j in scored_jobs if j.get("score") == "high")
         medium = sum(1 for j in scored_jobs if j.get("score") == "medium")
         low = sum(1 for j in scored_jobs if j.get("score") == "low")

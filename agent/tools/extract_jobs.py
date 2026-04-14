@@ -50,9 +50,6 @@ def extract_jobs(page_text: str, url: str) -> List[Dict[str, Any]]:
 
     try:
         response = chat(system=system, user=user, max_tokens=4000)
-        print("=== RAW LLM RESPONSE ===")
-        print(repr(response[:500]))
-        print("========================")
     except Exception as exc:
         logger.exception("LLM call failed while extracting jobs from %s: %s", url, exc)
         return []

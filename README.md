@@ -207,12 +207,6 @@ Targeting **Staff/AI Agent Engineer** roles.
 
 ---
 
-## License
-
-MIT
-
----
-
 ## Contact
 
 Questions or collaboration opportunities? Open an issue or reach out directly.

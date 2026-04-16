@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -40,10 +41,10 @@ pgvector, Langfuse tracing, LangGraph, agentic design patterns.
 Targeting: Staff Engineer or AI Agent Engineer roles at product companies.
 Strong backend fundamentals with hands-on AI agent engineering experience.
 Comfortable with ambiguity, self-directed, remote-first culture experience.
-""""
+"""
     )
 
-    result = run(job_urls, experience)
+    result = asyncio.run(run(job_urls, experience))
     print(json.dumps(result, indent=2))
 
 

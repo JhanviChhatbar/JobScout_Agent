@@ -42,7 +42,7 @@ def compose_digest(scored_jobs: List[Dict], candidate_name: str = "there") -> st
                  
                  Keep it concise and professional."""
 
-    result = chat(system=system, user=user, max_tokens=600)
+    result = chat(system=system, user=user, max_tokens=1000)
     return result
 
 

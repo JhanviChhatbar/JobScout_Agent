@@ -13,8 +13,16 @@ server:
 jobscout:
   agent:
     script-path: ../agent/main.py
+    python-path: python
 
 logging:
   level:
-    com.jobscout: INFO
+    in.jobscout: INFO
+    root: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
 

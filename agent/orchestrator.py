@@ -13,6 +13,14 @@ from scraper.redis_cache import get_cached, set_cache
 from tools.extract_jobs import extract_jobs
 from tools.match_score import score_all
 from tools.compose_digest import compose_digest
+from email_sender import send_digest
+from database.db import setup_tables, save_jobs, save_run, filter_new_jobs
+from database.vector_store import (
+    setup_vector_tables,
+    store_job_embedding,
+    store_experience_chunks
+)
+from trust.trust_gate import should_send_email, log_audit
 
 
 load_dotenv()
@@ -29,6 +37,9 @@ def _get_trace_id(trace: object | None) -> str | None:
 async def run(job_urls: List[str], experience: str, candidate_name: str = "there") -> Dict[str, Any]:
     trace = None
     try:
+        setup_tables()
+        setup_vector_tables()
+        store_experience_chunks(experience)
         trace = create_trace("job-scout-run", {"url_count": len(job_urls)})
 
         # STEP 2 — Scrape all career pages (with Redis cache)
@@ -97,9 +108,23 @@ async def run(job_urls: List[str], experience: str, candidate_name: str = "there
         logging.info(f"Filtered to {len(filtered_jobs)} relevant jobs from {len(all_jobs)} total")
         end_span(span_filter, {"filtered_jobs": len(filtered_jobs)})
 
-        # STEP 4 — Score filtered jobs
-        span_score = create_span(trace, "match-scoring", {"jobs": len(filtered_jobs)})
-        scored_jobs = score_all(filtered_jobs, experience)
+        # STEP 3.6 — Filter out already-seen jobs
+        span_dedup = create_span(trace, "dedup-jobs", {"before_dedup": len(filtered_jobs)})
+        new_jobs = filter_new_jobs(filtered_jobs)
+        end_span(span_dedup, {"after_dedup": len(new_jobs)})
+
+        if not new_jobs:
+            if langfuse_client is not None:
+                try:
+                    langfuse_client.flush()
+                except Exception:
+                    pass
+            return {"status": "no_new_jobs", "pages_scraped": len(to_scrape), "jobs_found": len(all_jobs), 
+                    "high_matches": 0, "medium_matches": 0, "trace_id": _get_trace_id(trace)}
+
+        # STEP 4 — Score only new jobs (skip already-seen jobs)
+        span_score = create_span(trace, "match-scoring", {"jobs": len(new_jobs)})
+        scored_jobs = score_all(new_jobs, experience)
         high = len([j for j in scored_jobs if j.get("score") == "high"])
         medium = len([j for j in scored_jobs if j.get("score") == "medium"])
         low = len([j for j in scored_jobs if j.get("score") == "low"])
@@ -114,22 +139,53 @@ async def run(job_urls: List[str], experience: str, candidate_name: str = "there
         digest = compose_digest(scored_jobs, candidate_name)
         end_span(span_digest, {"email_length": len(digest)})
 
-        # STEP 6 — Flush Langfuse and return
+        # STEP 6 — Trust gate check
+        allowed, reason = should_send_email(scored_jobs, digest)
+        log_audit({"jobs_found": len(all_jobs), 
+                   "high_matches": high,
+                   "trace_id": trace.id if trace else None}, 
+                  allowed, reason)
+        
+        # STEP 7 — Send email only if trust gate passes
+        email_sent = False
+        span_email = create_span(trace, "send-email", {"allowed": allowed})
+        if allowed:
+            email_sent = send_digest(
+                digest=digest,
+                subject=f"Job Scout — {high} high match(es) today"
+            )
+        else:
+            logging.warning(f"Email blocked by trust gate: {reason}")
+        end_span(span_email, {"sent": email_sent, "blocked_reason": reason})
+
+        # STEP 8 — Save to database
+        span_db = create_span(trace, "save-to-db", {})
+        new_jobs = save_jobs(scored_jobs)
+        end_span(span_db, {"new_jobs_saved": new_jobs})
+
+        # STEP 8.5 — Store job embeddings
+        for job in scored_jobs:
+            store_job_embedding(job)
+
+        # STEP 9 — Flush Langfuse and return
         if langfuse_client is not None:
             try:
                 langfuse_client.flush()
             except Exception:
                 logger.exception("Langfuse flush failed")
 
-        return {
+        result = {
             "status": "ok",
             "pages_scraped": len(to_scrape),
             "jobs_found": len(all_jobs),
             "high_matches": high,
             "medium_matches": medium,
             "digest": digest,
+            "email_sent": email_sent,
             "trace_id": _get_trace_id(trace),
         }
+        save_run(result)
+        return result
     except Exception as exc:
         logger.exception("Job scout pipeline failed")
         try:

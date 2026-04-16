@@ -12,6 +12,7 @@ if str(_AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(_AGENT_DIR))
 
 from llm_provider import chat
+from database.vector_store import get_similar_past_jobs, get_relevant_experience
 
 
 logger = logging.getLogger(__name__)
@@ -36,18 +37,33 @@ def score_job(job: dict, experience: str) -> dict:
         "You are a job matching agent. You compare job requirements against "
         "candidate experience and return a match assessment."
     )
+    
+    # Get RAG context
+    similar_past = get_similar_past_jobs(job.get("description", ""), limit=2)
+    relevant_exp = get_relevant_experience(job.get("description", ""), limit=2)
+    
+    past_context = ""
+    if similar_past:
+        past_context = "Similar jobs you've seen before:\n"
+        for p in similar_past:
+            past_context += f"- {p['job_title']}: scored {p['score']} — {p['reason']}\n"
+    
     user = f"""Compare this job against the candidate experience.
-                 Return ONLY a valid JSON object with no markdown, no explanation:
-                 {{
-                   "score": "high" or "medium" or "low",
-                   "reason": "one sentence why this is a good or bad match",
-                   "missing_skills": ["skill1", "skill2"]
-                 }}
-                 
-                 Job title: {job.get('title', '')}
-                 Job description: {job.get('description', '')[:1000]}
-                 
-                 Candidate experience: {experience}"""
+             
+             Job title: {job.get('title', '')}
+             Job description: {job.get('description', '')[:1000]}
+             
+             Relevant candidate experience:
+             {relevant_exp if relevant_exp else experience}
+             
+             {past_context}
+             
+             Return ONLY a valid JSON object with no markdown:
+             {{
+               "score": "high" or "medium" or "low",
+               "reason": "one sentence explanation",
+               "missing_skills": ["skill1", "skill2"]
+             }}"""
 
     try:
         response = chat(system=system, user=user, max_tokens=1000)
@@ -68,7 +84,7 @@ def score_all(jobs: list[dict], experience: str) -> list[dict]:
     for i, job in enumerate(jobs):
         logging.info(f"Scoring job {i+1}/{len(jobs)}: {job.get('title', '')}")
         scored.append(score_job(job, experience))
-        if i < len(jobs) - 1:  # no sleep after last job
+        if i < len(jobs) - 1:
             time.sleep(13)
     return scored
 

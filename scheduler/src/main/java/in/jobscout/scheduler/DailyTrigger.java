@@ -1,66 +1,85 @@
 package in.jobscout.scheduler;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.CompletableFuture;
+import java.io.InputStreamReader;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.concurrent.TimeUnit;
 
 @Component
 @Slf4j
 public class DailyTrigger {
 
-    @Scheduled(cron = "0 30 3 * * *") // 9 AM IST = 03:30 UTC
+    @Value("${jobscout.agent.script-path:../agent/main.py}")
+    private String scriptPath;
+
+    @Value("${jobscout.agent.python-path:python}")
+    private String pythonPath;
+
+    /**
+     * Scheduled daily trigger at 3:30 AM UTC.
+     * Runs the Job Scout Agent Python script.
+     */
+    @Scheduled(cron = "0 30 3 * * *")
     public void triggerAgentRun() {
-        runAgentProcess();
+        String timestamp = LocalDateTime.now()
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        log.info("Starting daily job scout run at {}", timestamp);
+        executeAgent();
     }
 
+    /**
+     * Manual trigger for testing (can be called via REST endpoint or directly).
+     */
     public void triggerManually() {
-        runAgentProcess();
+        log.info("Starting manual job scout trigger");
+        executeAgent();
     }
 
-    private void runAgentProcess() {
-        log.info("Starting daily job scout run...");
+    /**
+     * Execute the Python agent script.
+     */
+    private void executeAgent() {
+        ProcessBuilder pb = new ProcessBuilder(pythonPath, scriptPath);
+        pb.directory(new File(scriptPath).getParentFile());
+        pb.redirectErrorStream(true);
 
+        Process process = null;
         try {
-            ProcessBuilder processBuilder = new ProcessBuilder("python", "main.py");
-            processBuilder.directory(new File("../agent"));
+            process = pb.start();
+            log.info("Agent process started");
 
-            Process process = processBuilder.start();
-
-            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
-                    () -> readStream(process.getInputStream())
-            );
-            CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
-                    () -> readStream(process.getErrorStream())
-            );
-
-            int exitCode = process.waitFor();
-            String stdout = stdoutFuture.join();
-            String stderr = stderrFuture.join();
-
-            if (!stdout.isBlank()) {
-                log.info("Daily job scout stdout:\n{}", stdout);
-            }
-            if (!stderr.isBlank()) {
-                log.error("Daily job scout stderr:\n{}", stderr);
+            // Read output line by line
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    log.info("Agent: {}", line);
+                }
             }
 
-            log.info("Daily job scout process exited with code: {}", exitCode);
-        } catch (Exception ex) {
-            log.error("Error while running daily job scout process", ex);
-        }
-    }
+            // Wait for process completion with 10-minute timeout
+            boolean finished = process.waitFor(10, TimeUnit.MINUTES);
+            if (finished) {
+                int exitCode = process.exitValue();
+                log.info("Agent process completed with exit code: {}", exitCode);
+            } else {
+                log.warn("Agent process timed out after 10 minutes");
+                process.destroyForcibly();
+            }
 
-    private String readStream(InputStream stream) {
-        try (InputStream in = stream) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            return "Failed to read process stream: " + ex.getMessage();
+        } catch (Exception e) {
+            log.error("Failed to execute job scout agent", e);
+        } finally {
+            if (process != null && process.isAlive()) {
+                process.destroyForcibly();
+            }
         }
     }
 }
